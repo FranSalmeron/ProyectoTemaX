@@ -1,3 +1,8 @@
+# Model checkpoints (too large for GitHub)
 ProyectoModelo/checkpoints/
 *.h5
 *.keras
+
+# Python build / cache
+__pycache__/
+*.pyc
