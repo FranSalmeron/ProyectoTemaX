@@ -21,6 +21,6 @@ Este modelo usa un dataset de kaggle con 20.000 imagenes de animales nosotros pa
 
 ### Entrenar modelo
 cd ProyectoModelo
-python -m model.model   --data_dir data/raw-img   --output_dir checkpoints   --epochs 5   --batch_size 64
+python ProyectoModelo/model/model.py   --data_dir data/raw-img   --output_dir checkpoints   --epochs 5   --batch_size 64
 
 ###

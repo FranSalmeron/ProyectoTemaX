@@ -9,7 +9,7 @@ Estructura de datos esperada (ejemplo):
     gato/
     elefante/
 
-(El split train/validation se hace automáticamente mediante `--validation_split`.)
+(Actualmente el modelo entrena usando todos los datos disponibles.)
 
 Uso:
   python -m model.model --data_dir ../data --output_dir ./checkpoints --epochs 10
@@ -33,7 +33,7 @@ from tensorflow.keras import layers
 
 def build_model(
     num_classes: int,
-    input_shape: tuple[int, int, int] = (224, 224, 1),
+    input_shape: tuple[int, int, int] = (224, 224, 3),
     learning_rate: float = 1e-3,
 ) -> tf.keras.Model:
     """Builds a simple image classification model.
@@ -191,13 +191,12 @@ def prepare_datasets(
     batch_size: int = 32,
     validation_split: float = 0.2,
     seed: int = 42,
-    grayscale: bool = True,
-    max_images: int | None = None,
 ) -> tuple[tf.data.Dataset, tf.data.Dataset, list[str]]:
     """Loads images from disk using a directory structure and returns train/validation datasets.
 
-    By default, images are converted to grayscale (single channel) using
-    `tf.image.rgb_to_grayscale` to speed up training.
+    Images are loaded as RGB (3 channels) and resized to `image_size`.
+
+    The training pipeline includes caching/prefetching for performance.
 
     Args:
         data_dir: Root folder containing class subfolders.
@@ -205,8 +204,6 @@ def prepare_datasets(
         batch_size: Batch size.
         validation_split: Fraction of data to reserve for validation.
         seed: Random seed for shuffling.
-        grayscale: If True, converts RGB images to grayscale.
-        max_images: Maximum number of images to use (train+val). Set to None to use all.
 
     Returns:
         Tuple of (train_ds, val_ds, class_names).
@@ -218,7 +215,6 @@ def prepare_datasets(
         label_mode="int",
         batch_size=batch_size,
         image_size=image_size,
-        shuffle=True,
         validation_split=validation_split,
         subset="training",
         seed=seed,
@@ -233,44 +229,17 @@ def prepare_datasets(
         label_mode="int",
         batch_size=batch_size,
         image_size=image_size,
-        shuffle=True,
         validation_split=validation_split,
         subset="validation",
         seed=seed,
         color_mode="rgb",
     )
 
-    # Limit dataset size if requested.
-    if max_images is not None and max_images > 0:
-        total_images = _count_image_files(data_dir)
-        if total_images > 0:
-            max_images = min(max_images, total_images)
-            max_train = int(max_images * (1.0 - validation_split))
-            max_val = max_images - max_train
-
-            if max_train > 0:
-                train_ds = (
-                    train_ds.unbatch()
-                    .take(max_train)
-                    .batch(batch_size)
-                    .prefetch(tf.data.AUTOTUNE)
-                )
-
-            if max_val > 0:
-                val_ds = (
-                    val_ds.unbatch()
-                    .take(max_val)
-                    .batch(batch_size)
-                    .prefetch(tf.data.AUTOTUNE)
-                )
-
-    if grayscale:
-        def to_gray(images, labels):
-            images_gray = tf.image.rgb_to_grayscale(images)
-            return images_gray, labels
-
-        train_ds = train_ds.map(to_gray, num_parallel_calls=tf.data.AUTOTUNE)
-        val_ds = val_ds.map(to_gray, num_parallel_calls=tf.data.AUTOTUNE)
+    # Cache + prefetch for performance.
+    # Note: Caching can use a lot of RAM if the dataset is large; if this is a problem,
+    # remove `.cache()` or set it to a filename to cache on disk.
+    train_ds = train_ds.cache().prefetch(tf.data.AUTOTUNE)
+    val_ds = val_ds.cache().prefetch(tf.data.AUTOTUNE)
 
     return train_ds, val_ds, class_names
 
@@ -282,7 +251,6 @@ def train(
     batch_size: int = 32,
     image_size: tuple[int, int] = (224, 224),
     validation_split: float = 0.2,
-    max_images: int | None = 10000,
     learning_rate: float = 1e-3,
 ) -> tuple[tf.keras.callbacks.History, list[str], Path]:
     """Train the animal classifier and save checkpoints."""
@@ -290,18 +258,20 @@ def train(
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
+    total_images = _count_image_files(data_dir)
+    if total_images == 0:
+        raise ValueError(f"No se encontraron imágenes en: {data_dir}")
+
     train_ds, val_ds, class_names = prepare_datasets(
         data_dir,
         image_size=image_size,
         batch_size=batch_size,
         validation_split=validation_split,
-        grayscale=True,
-        max_images=max_images,
     )
 
     model = build_model(
         num_classes=len(class_names),
-        input_shape=(*image_size, 1),
+        input_shape=(*image_size, 3),
         learning_rate=learning_rate,
     )
 
@@ -313,26 +283,15 @@ def train(
         mode="max",
     )
 
-    # Keras prints `x/Unknown` when the dataset cardinality is not known.
-    # If we limited the number of images, we can compute exact steps per epoch.
+    # Keras can automatically determine the number of steps from the dataset.
+    # By not passing `steps_per_epoch`/`validation_steps`, we avoid mismatch warnings.
     steps_per_epoch = None
     validation_steps = None
 
-    if max_images and max_images > 0:
-        max_train = int(max_images * (1.0 - validation_split))
-        max_val = max_images - max_train
-        if max_train > 0:
-            steps_per_epoch = math.ceil(max_train / batch_size)
-        if max_val > 0:
-            validation_steps = math.ceil(max_val / batch_size)
-
     history = model.fit(
         train_ds,
-        validation_data=val_ds,
         epochs=epochs,
         callbacks=[checkpoint_cb],
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps,
     )
 
     final_model_path = output_dir_path / "animal_classifier.h5"
@@ -398,16 +357,7 @@ def parse_args() -> argparse.Namespace:
         "--validation_split",
         type=float,
         default=0.2,
-        help="Fracción de datos a utilizar para validación.",
-    )
-    parser.add_argument(
-        "--max_images",
-        type=int,
-        default=10000,
-        help=(
-            "Límite máximo de imágenes (train+val) a usar durante el entrenamiento. "
-            "Usa 0 para no aplicar límite."   
-        ),
+        help="Fracción de los datos que se reservará para validación.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -438,9 +388,7 @@ def main() -> None:
         batch_size=args.batch_size,
         image_size=tuple(args.image_size),
         validation_split=args.validation_split,
-        max_images=args.max_images,
         learning_rate=args.learning_rate,
-        augment=args.augment,
     )
 
 

@@ -1,5 +1,8 @@
 # Model checkpoints (too large for GitHub)
 ProyectoModelo/checkpoints/
+!ProyectoModelo/checkpoints/class_names.json
+!ProyectoModelo/checkpoints/training_history.png
+# '*.h5' and '*.keras' can be large; keep them ignored unless explicitly added.
 *.h5
 *.keras
 
