@@ -33,40 +33,59 @@ from tensorflow.keras import layers
 
 def build_model(
     num_classes: int,
-    input_shape: tuple[int, int, int] = (224, 224, 1),
-    learning_rate: float = 1e-3,
+    input_shape: tuple[int, int, int] = (224, 224, 3),
+    learning_rate: float = 1e-4,
+    use_pretrained: bool = True,
+    fine_tune_at: int | None = None,
 ) -> tf.keras.Model:
-    """Builds a simple image classification model.
+    """Builds an image classification model.
+
+    By default, uses a pretrained EfficientNetB0 backbone (transfer learning).
+    If `use_pretrained=False`, it builds a model from scratch.
 
     Args:
         num_classes: Number of output classes.
         input_shape: Expected input image shape.
         learning_rate: Learning rate for the optimizer.
+        use_pretrained: If True, uses a pretrained EfficientNetB0 backbone.
+        fine_tune_at: If provided, unfreezes layers from this index onward for fine-tuning.
 
     Returns:
         A compiled keras Model.
     """
 
+    # Data augmentation layers (applied only during training)
+    data_augmentation = tf.keras.Sequential(
+        [
+            layers.RandomFlip("horizontal"),
+            layers.RandomRotation(0.15),
+            layers.RandomZoom(0.15),
+        ],
+        name="data_augmentation",
+    )
+
     inputs = layers.Input(shape=input_shape)
 
-    # Base feature extractor
-    x = layers.Rescaling(1.0 / 255)(inputs)
-    x = layers.Conv2D(32, 3, activation="relu", padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.MaxPooling2D()(x)
+    # Use a pretrained backbone to get a strong feature extractor.
+    base_model = tf.keras.applications.EfficientNetB0(
+        include_top=False,
+        weights="imagenet",
+        input_shape=input_shape,
+    )
+    base_model.trainable = False
 
-    x = layers.Conv2D(64, 3, activation="relu", padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.MaxPooling2D()(x)
+    if fine_tune_at is not None:
+        # Unfreeze from a specific layer onwards for fine-tuning.
+        for layer in base_model.layers[fine_tune_at:]:
+            layer.trainable = True
 
-    x = layers.Conv2D(128, 3, activation="relu", padding="same")(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.MaxPooling2D()(x)
-    x = layers.Dropout(0.25)(x)
-
-    x = layers.Flatten()(x)
+    x = data_augmentation(inputs)
+    x = tf.keras.applications.efficientnet.preprocess_input(x)
+    x = base_model(x, training=False)
+    x = layers.GlobalAveragePooling2D()(x)
+    x = layers.Dropout(0.4)(x)
     x = layers.Dense(256, activation="relu")(x)
-    x = layers.Dropout(0.5)(x)
+    x = layers.Dropout(0.4)(x)
     outputs = layers.Dense(num_classes, activation="softmax")(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs, name="animal_classifier")
@@ -191,13 +210,13 @@ def prepare_datasets(
     batch_size: int = 32,
     validation_split: float = 0.2,
     seed: int = 42,
-    grayscale: bool = True,
+    grayscale: bool = False,
     max_images: int | None = None,
 ) -> tuple[tf.data.Dataset, tf.data.Dataset, list[str]]:
     """Loads images from disk using a directory structure and returns train/validation datasets.
 
-    By default, images are converted to grayscale (single channel) using
-    `tf.image.rgb_to_grayscale` to speed up training.
+    By default, images are kept in RGB (3 channels). Set `grayscale=True` only when you
+    really need single-channel inputs.
 
     Args:
         data_dir: Root folder containing class subfolders.
@@ -218,7 +237,6 @@ def prepare_datasets(
         label_mode="int",
         batch_size=batch_size,
         image_size=image_size,
-        shuffle=True,
         validation_split=validation_split,
         subset="training",
         seed=seed,
@@ -233,12 +251,16 @@ def prepare_datasets(
         label_mode="int",
         batch_size=batch_size,
         image_size=image_size,
-        shuffle=True,
         validation_split=validation_split,
         subset="validation",
         seed=seed,
         color_mode="rgb",
     )
+
+    # Shuffle and prefetch to improve training performance.
+    train_ds = train_ds.shuffle(1024, seed=seed, reshuffle_each_iteration=True)
+    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
+    val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
 
     # Limit dataset size if requested.
     if max_images is not None and max_images > 0:
@@ -253,6 +275,7 @@ def prepare_datasets(
                     train_ds.unbatch()
                     .take(max_train)
                     .batch(batch_size)
+                    .shuffle(1024, seed=seed, reshuffle_each_iteration=True)
                     .prefetch(tf.data.AUTOTUNE)
                 )
 
@@ -283,7 +306,7 @@ def train(
     image_size: tuple[int, int] = (224, 224),
     validation_split: float = 0.2,
     max_images: int | None = 10000,
-    learning_rate: float = 1e-3,
+    learning_rate: float = 1e-4,
 ) -> tuple[tf.keras.callbacks.History, list[str], Path]:
     """Train the animal classifier and save checkpoints."""
 
@@ -295,13 +318,13 @@ def train(
         image_size=image_size,
         batch_size=batch_size,
         validation_split=validation_split,
-        grayscale=True,
+        grayscale=False,
         max_images=max_images,
     )
 
     model = build_model(
         num_classes=len(class_names),
-        input_shape=(*image_size, 1),
+        input_shape=(*image_size, 3),
         learning_rate=learning_rate,
     )
 
@@ -412,7 +435,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=1e-3,
+        default=1e-4,
         help="Tasa de aprendizaje para el optimizador Adam.",
     )
     return parser.parse_args()
@@ -440,7 +463,6 @@ def main() -> None:
         validation_split=args.validation_split,
         max_images=args.max_images,
         learning_rate=args.learning_rate,
-        augment=args.augment,
     )
 
 

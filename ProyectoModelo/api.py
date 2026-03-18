@@ -56,10 +56,11 @@ except Exception as exc:  # pragma: no cover
 
 
 def preprocess_image(image: Image.Image, target_size: tuple[int, int] = (224, 224)) -> np.ndarray:
-    # Convert to grayscale to match the model input used during training
-    image = image.convert("L").resize(target_size)
-    arr = np.array(image, dtype=np.float32) / 255.0
-    return np.expand_dims(arr, axis=(0, -1))
+    # Convert to RGB (3 channels) to match the current model.
+    # The model itself applies EfficientNet preprocessing internally.
+    image = image.convert("RGB").resize(target_size)
+    arr = np.array(image, dtype=np.float32)
+    return np.expand_dims(arr, axis=0)
 
 
 @app.get("/")
