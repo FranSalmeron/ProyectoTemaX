@@ -1,6 +1,3 @@
-# Model checkpoints (too large for GitHub)
-ProyectoModelo/checkpoints/
-*.keras
 
 # Python build / cache
 __pycache__/
