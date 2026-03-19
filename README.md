@@ -20,6 +20,7 @@ Este modelo usa un dataset de kaggle con 20.000 imagenes de animales nosotros pa
 ### Dependencias
 pip install matplotlib
 pip install tensorflow
+pip install python-multipart
 pip install fastapi uvicorn pillow tensorflow
 
 ### Entrenar modelo

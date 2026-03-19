@@ -14,18 +14,23 @@ def build_model(num_classes, input_shape=(224, 224, 3)):
         layers.Rescaling(1./255, input_shape=input_shape),
 
         layers.Conv2D(32, 3, activation="relu", padding="same"),
+        layers.BatchNormalization(),
         layers.MaxPooling2D(),
 
         layers.Conv2D(64, 3, activation="relu", padding="same"),
+        layers.BatchNormalization(),
         layers.MaxPooling2D(),
 
         layers.Conv2D(128, 3, activation="relu", padding="same"),
+        layers.BatchNormalization(),
         layers.MaxPooling2D(),
 
         layers.GlobalAveragePooling2D(),
-        layers.Dense(128, activation="relu"),
+        layers.Dense(64, activation="relu"),
         layers.Dropout(0.5),
-
+        layers.Dense(128, activation="relu"),
+        layers.Dropout(0.2),
+        
         layers.Dense(num_classes, activation="softmax")
     ])
 
