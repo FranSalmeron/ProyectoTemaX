@@ -45,7 +45,7 @@ def load_model_and_classes(model_path: Path) -> tuple[tf.keras.Model, Optional[l
     return model, class_names
 
 
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "checkpoints" / "animal_classifier.h5"
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "checkpoints" / "final_model.h5"
 
 try:
     MODEL, CLASS_NAMES = load_model_and_classes(DEFAULT_MODEL_PATH)
