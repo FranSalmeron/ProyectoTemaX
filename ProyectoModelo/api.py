@@ -118,8 +118,7 @@ except Exception as exc:
 
 @app.get("/")
 async def health_check() -> dict[str, str]:
-    return {"status": "ok", "model_loaded": bool(MODEL)}
-
+    return {"status": "ok", "model_loaded": str(bool(MODEL))}
 # ------------------------------
 # Predict individual
 # ------------------------------
