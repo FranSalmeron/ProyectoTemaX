@@ -32,3 +32,7 @@ python api.py
 
 ### Prueba rapida
 curl -F "file=@dog001.jpg" http://127.0.0.1:8000/predict
+
+### Desplegar Contenedores
+docker compose build
+docker compose up

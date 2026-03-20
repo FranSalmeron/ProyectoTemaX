@@ -1,13 +1,11 @@
-version: "3.9"
-
 services:
   backend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: ProyectoModelo/Dockerfile.backend
     container_name: animales_api
-    ports:
-      - "8000:8000"
+    # ports:
+    #  - "8000:8000"
     volumes:
       - ./ProyectoModelo/data:/data
     restart: unless-stopped
