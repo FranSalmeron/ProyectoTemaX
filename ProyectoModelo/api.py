@@ -1,7 +1,7 @@
 """FastAPI service to serve the trained animal classifier.
 
 Usage:
-  pip install fastapi uvicorn pillow tensorflow
+  pip install fastapi uvicorn pillow tensorflow pydantic
   python api.py
 
 Then open:
@@ -10,33 +10,60 @@ Then open:
 The API expects a multipart/form-data upload with a single file field named `file`.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # debe ir primero
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
+import uuid
+import json
+import hashlib
 
 import numpy as np
 import tensorflow as tf
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from PIL import Image
+from pydantic import BaseModel
 
-# Traducciones para etiquetas (español <-> inglés)
+# ------------------------------
+# Modelos de datos
+# ------------------------------
+
+class UserAuth(BaseModel):
+    username: str
+    password: str
+
+# ------------------------------
+# Traducciones
+# ------------------------------
 try:
     from data.translate import translate as TRANSLATE
-except ImportError:  # pragma: no cover
+except ImportError:
     TRANSLATE = {}
 
+# ------------------------------
+# Inicialización FastAPI y directorios
+# ------------------------------
 app = FastAPI(title="Animal Classifier API", version="1.0")
 
+DATA_DIR = Path("/data/predicciones")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+USERS_DIR = Path("/data/usuarios")
+USERS_DIR.mkdir(parents=True, exist_ok=True)
+
+# ------------------------------
+# Funciones auxiliares
+# ------------------------------
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def load_model_and_classes(model_path: Path) -> tuple[tf.keras.Model, Optional[list[str]]]:
     model = tf.keras.models.load_model(model_path)
 
     class_names_path = model_path.parent / "class_names.json"
     if class_names_path.exists():
-        import json
-
         with open(class_names_path, "r", encoding="utf-8") as f:
             class_names = json.load(f)
     else:
@@ -44,62 +71,181 @@ def load_model_and_classes(model_path: Path) -> tuple[tf.keras.Model, Optional[l
 
     return model, class_names
 
-
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "checkpoints" / "model.keras"
-
-try:
-    MODEL, CLASS_NAMES = load_model_and_classes(DEFAULT_MODEL_PATH)
-except Exception as exc:  # pragma: no cover
-    MODEL = None
-    CLASS_NAMES = None
-    print(f"No se pudo cargar el modelo desde {DEFAULT_MODEL_PATH}: {exc}")
-
-
 def preprocess_image(image: Image.Image, target_size: tuple[int, int] = (224, 224)) -> np.ndarray:
     # Convert to RGB (3 channels) to match the current model.
-    # The model itself applies EfficientNet preprocessing internally.
+    # El modelo aplica preprocesamiento internamente
     image = image.convert("RGB").resize(target_size)
     arr = np.array(image, dtype=np.float32)
     return np.expand_dims(arr, axis=0)
 
+def save_prediction(image: Image.Image, file: UploadFile, label: str, label_es: str, confidence: float):
+    image_id = str(uuid.uuid4())
+
+    # Guardar imagen
+    image_path = DATA_DIR / f"{image_id}.jpg"
+    image.save(image_path)
+
+    # Guardar metadata
+    metadata = {
+        "id": image_id,
+        "filename": file.filename,
+        "predicted_label": label,
+        "predicted_label_es": label_es,
+        "confidence": confidence,
+    }
+
+    metadata_path = DATA_DIR / f"{image_id}.json"
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f)
+
+    return metadata
+
+# ------------------------------
+# Cargar modelo
+# ------------------------------
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "checkpoints" / "model.keras"
+
+try:
+    MODEL, CLASS_NAMES = load_model_and_classes(DEFAULT_MODEL_PATH)
+except Exception as exc:
+    MODEL = None
+    CLASS_NAMES = None
+    print(f"No se pudo cargar el modelo desde {DEFAULT_MODEL_PATH}: {exc}")
+
+# ------------------------------
+# Endpoints
+# ------------------------------
 
 @app.get("/")
 async def health_check() -> dict[str, str]:
     return {"status": "ok", "model_loaded": bool(MODEL)}
 
-
+# ------------------------------
+# Predict individual
+# ------------------------------
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)) -> JSONResponse:
     if MODEL is None:
-        raise HTTPException(status_code=503, detail="Modelo no cargado. Entrena primero y vuelve a iniciar el servidor.")
+        raise HTTPException(status_code=503, detail="Modelo no cargado.")
 
     try:
-        image = Image.open(file.file)
+        with Image.open(file.file) as image:
+            batch = preprocess_image(image, target_size=(224, 224))
+            preds = MODEL.predict(batch)
+            top_idx = int(np.argmax(preds[0]))
+            confidence = float(np.max(preds[0]))
+            label = CLASS_NAMES[top_idx] if CLASS_NAMES else str(top_idx)
+            label_es = TRANSLATE.get(label, TRANSLATE.get(label.lower(), label))
+
+            metadata = save_prediction(image, file, label, label_es, confidence)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"No se puede leer la imagen: {exc}")
 
-    batch = preprocess_image(image, target_size=(224, 224))
-    preds = MODEL.predict(batch)
-
-    top_idx = int(np.argmax(preds[0]))
-    confidence = float(np.max(preds[0]))
-    label = CLASS_NAMES[top_idx] if CLASS_NAMES else str(top_idx)
-
-    # Si existe traducción al español, úsala (no requiere reentrenar)
-    label_es = TRANSLATE.get(label, TRANSLATE.get(label.lower(), label))
-
     return JSONResponse(
         {
-            "predicted_label": label,
-            "predicted_label_es": label_es,
-            "confidence": confidence,
+            **metadata,
             "scores": preds[0].tolist(),
             "class_names": CLASS_NAMES,
         }
     )
 
+# ------------------------------
+# Predict multiple
+# ------------------------------
+@app.post("/predict-multiple")
+async def predict_multiple(files: List[UploadFile] = File(...)) -> JSONResponse:
+    if MODEL is None:
+        raise HTTPException(status_code=503, detail="Modelo no cargado.")
 
+    results = []
+
+    for file in files:
+        try:
+            with Image.open(file.file) as image:
+                batch = preprocess_image(image, target_size=(224, 224))
+                preds = MODEL.predict(batch)
+                top_idx = int(np.argmax(preds[0]))
+                confidence = float(np.max(preds[0]))
+                label = CLASS_NAMES[top_idx] if CLASS_NAMES else str(top_idx)
+                label_es = TRANSLATE.get(label, TRANSLATE.get(label.lower(), label))
+
+                metadata = save_prediction(image, file, label, label_es, confidence)
+                results.append(metadata)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Error en {file.filename}: {exc}")
+
+    return JSONResponse({"results": results})
+
+# ------------------------------
+# Banco de imágenes
+# ------------------------------
+@app.get("/get-image-bank")
+async def get_image_bank():
+    items = []
+
+    for json_file in DATA_DIR.glob("*.json"):
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        items.append(
+            {
+                **data,
+                "image_url": f"/image-bank/{data['id']}/image"
+            }
+        )
+
+    return {"items": items}
+
+@app.get("/image-bank/{image_id}/image")
+async def get_image(image_id: str):
+    image_path = DATA_DIR / f"{image_id}.jpg"
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Imagen no encontrada")
+
+    return FileResponse(image_path)
+
+# ------------------------------
+# Registro y login usuarios
+# ------------------------------
+@app.post("/register")
+async def register(user: UserAuth):
+    # Limpiar caracteres peligrosos
+    safe_username = user.username.replace("/", "").replace("\\", "")
+    user_file = USERS_DIR / f"{safe_username}.json"
+
+    if user_file.exists():
+        raise HTTPException(status_code=400, detail="El usuario ya existe")
+
+    user_data = {
+        "username": safe_username,
+        "password": hash_password(user.password),
+    }
+
+    with open(user_file, "w", encoding="utf-8") as f:
+        json.dump(user_data, f)
+
+    return {"message": "Usuario registrado correctamente"}
+
+@app.post("/login")
+async def login(user: UserAuth):
+    safe_username = user.username.replace("/", "").replace("\\", "")
+    user_file = USERS_DIR / f"{safe_username}.json"
+
+    if not user_file.exists():
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    with open(user_file, "r", encoding="utf-8") as f:
+        stored_user = json.load(f)
+
+    if stored_user["password"] != hash_password(user.password):
+        raise HTTPException(status_code=401, detail="Contraseña incorrecta")
+
+    return {"message": "Login correcto"}
+
+# ------------------------------
+# Run
+# ------------------------------
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)

@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: animales_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ProyectoModelo/data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./Frontend/Dockerfile.frontend
+    container_name: animales_frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    networks:
+      - app-network
+    environment:
+      - REACT_APP_API_URL=http://backend:8000  # para que el frontend llame al backend
+
+networks:
+  app-network:
+    driver: bridge
