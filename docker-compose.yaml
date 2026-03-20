@@ -1,8 +1,8 @@
 services:
   backend:
     build:
-      context: .
-      dockerfile: ProyectoModelo/Dockerfile.backend
+      context: ./ProyectoModelo
+      dockerfile: Dockerfile.backend
     container_name: animales_api
     # ports:
     #  - "8000:8000"
