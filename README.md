@@ -27,12 +27,15 @@ pip install fastapi uvicorn pillow tensorflow
 cd ProyectoModelo
 python -m model.model   --data_dir data/raw-img   --output_dir checkpoints   --epochs 15   --batch_size 64
 
-### Levantar la Api
+### Levantar la Api (LOCAL)
 python api.py
 
-### Prueba rapida
+### Prueba rapida (LOCAL)
 curl -F "file=@dog001.jpg" http://127.0.0.1:8000/predict
 
-### Desplegar Contenedores
+### Desplegar Contenedores (PROD)
 docker compose build
 docker compose up
+
+### ver pagina front (PROD)
+http://localhost:3000

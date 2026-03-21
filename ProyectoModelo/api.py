@@ -209,8 +209,7 @@ async def get_image(image_id: str):
 # ------------------------------
 @app.post("/register")
 async def register(user: UserAuth):
-    # Limpiar caracteres peligrosos
-    safe_username = user.username.replace("/", "").replace("\\", "")
+    safe_username = user.username.strip().lower().replace("/", "").replace("\\", "")
     user_file = USERS_DIR / f"{safe_username}.json"
 
     if user_file.exists():
@@ -226,9 +225,10 @@ async def register(user: UserAuth):
 
     return {"message": "Usuario registrado correctamente"}
 
+
 @app.post("/login")
 async def login(user: UserAuth):
-    safe_username = user.username.replace("/", "").replace("\\", "")
+    safe_username = user.username.strip().lower().replace("/", "").replace("\\", "")
     user_file = USERS_DIR / f"{safe_username}.json"
 
     if not user_file.exists():
@@ -247,4 +247,13 @@ async def login(user: UserAuth):
 # ------------------------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(
+        "api:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        limit_concurrency=10,
+        timeout_keep_alive=30,
+        # Aumentar tamaño máximo de request
+        ws_max_size=524288000  # 500 MB si usas websockets
+    )

@@ -4,17 +4,13 @@ import "react-toastify/dist/ReactToastify.css";
 import { createUser } from "../helpers/UserHelper";
 import { useNavigate } from "react-router-dom";
 import { useDarkMode } from "../context/DarkModeContext";
-import { FaUser, FaEnvelope, FaMapMarkerAlt, FaPhone, FaLock, FaSpinner } from "react-icons/fa";
+import { FaUser, FaLock, FaSpinner } from "react-icons/fa";
 
 function Register() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [validations, setValidations] = useState({
-    email: true,
-    phone: true
-  });
-  const roles = ["ROLE_USER"];
+
   const navigate = useNavigate();
   const { isDarkMode } = useDarkMode();
 
@@ -22,33 +18,32 @@ function Register() {
     e.preventDefault();
     setLoading(true);
 
-      try {
-        const result = await createUser(userData);
-        toast.success(result.message);
-        setTimeout(() => {
-          navigate("/login");
-        }, 4000);
-      } catch (error) {
-        toast.error(error.message || "Error al crear el usuario");
-      }
-    setLoading(false);  
-    }
-    
-  
+    const userData = {
+      username: name,
+      password: password,
+    };
 
-  // Clases modo oscuro
-  const bgMain = isDarkMode ? "bg-[#1C1C1E] text-white" : "bg-[#F5EFEB] text-white";
-  const formBg = isDarkMode ? "bg-[#2F4156]" : "bg-[#2F4156]";
-  const inputBg = isDarkMode
-    ? "bg-gray-800 text-white placeholder-gray-400"
-    : "bg-gray-800 text-white placeholder-gray-400";
-  const btnBg = isDarkMode
-    ? "bg-red-600 hover:bg-red-700"
-    : "bg-red-500 hover:bg-red-600";
+    try {
+      const result = await createUser(userData);
+      toast.success(result.message);
+
+      setTimeout(() => {
+        navigate("/login");
+      }, 2000);
+    } catch (error) {
+      toast.error(error.message || "Error al crear el usuario");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Estilos ---
+  const bgMain = isDarkMode ? "bg-[#1C1C1E] text-white" : "bg-[#F5EFEB] text-black";
+  const formBg = "bg-[#2F4156]";
+  const inputBg = "bg-gray-800 text-white placeholder-gray-400";
+  const btnBg = isDarkMode ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600";
   const btnFocusRing = "focus:ring-2 focus:ring-red-500";
   const inputIconClass = "absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400";
-  const validationClass = (field) => 
-    validations[field] === false ? "border-2 border-red-500" : "";
 
   return (
     <div
@@ -64,15 +59,13 @@ function Register() {
           </div>
         </div>
 
-        <h2 className="text-3xl font-bold text-center mb-8">
-          Crear cuenta
-        </h2>
+        <h2 className="text-3xl font-bold text-center mb-8">Crear cuenta</h2>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Nombre */}
           <div className="relative">
             <label htmlFor="name" className="block text-lg font-medium mb-2">
-              Nombre completo:
+              Nombre de usuario:
             </label>
             <div className="relative">
               <FaUser className={inputIconClass} />
@@ -83,7 +76,7 @@ function Register() {
                 required
                 onChange={(e) => setName(e.target.value)}
                 className={`w-full p-3 pl-10 rounded-lg ${inputBg} focus:outline-none ${btnFocusRing} transition-all duration-300`}
-                placeholder="Escribe tu nombre completo"
+                placeholder="Escribe tu nombre de usuario"
               />
             </div>
           </div>

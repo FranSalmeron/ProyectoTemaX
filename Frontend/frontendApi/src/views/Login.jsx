@@ -1,11 +1,11 @@
 import React, { useState } from 'react'; 
 import 'react-toastify/dist/ReactToastify.css'; 
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { useDarkMode } from '../context/DarkModeContext';
-import { FaUser, FaLock, FaGoogle, FaGithub, FaSpinner } from 'react-icons/fa';
+import { FaUser, FaLock, FaSpinner } from 'react-icons/fa';
 
-const SOCKET_URL = import.meta.env.VITE_API_URL;
+const SOCKET_URL = import.meta.env.REACT_APP_API_URL || "/api";
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -22,28 +22,24 @@ const Login = () => {
     setError('');
 
     try {
-      const response = await fetch(`${SOCKET_URL}/api/login`, {
+      const response = await fetch(`${SOCKET_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: username, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        const token = data.token;
-        const refreshToken = data.refreshToken;
 
         localStorage.setItem('username', username);
-        if (rememberMe) {
-          localStorage.setItem('rememberMe', 'true');
-        }
-       
-        toast.success('¡Login exitoso!');
+        if (rememberMe) localStorage.setItem('rememberMe', 'true');
+
+        toast.success(data.message || 'Login exitoso!');
         navigate('/');
       } else {
         const errorData = await response.json();
-        setError(errorData.message || 'Error al iniciar sesión');
-        toast.error('Error al iniciar sesión');
+        setError(errorData.detail || 'Error al iniciar sesión');
+        toast.error(errorData.detail || 'Error al iniciar sesión');
       }
     } catch (err) {
       setError('Error de conexión. Por favor, intente nuevamente.');
@@ -53,18 +49,17 @@ const Login = () => {
     }
   };
 
-  // Clases para modo oscuro
+  // Clases modo oscuro
   const bgMain = isDarkMode ? "bg-[#1C1C1E] text-white" : "bg-[#F5EFEB] text-black";
   const formBg = isDarkMode ? "bg-[#2F4156]" : "bg-[#2F4156]";
   const inputBg = isDarkMode ? "bg-gray-800 text-white" : "bg-gray-800 text-white";
   const btnBg = isDarkMode ? "bg-red-600 hover:bg-red-700" : "bg-red-500 hover:bg-red-600";
   const btnFocusRing = "focus:ring-2 focus:ring-red-500";
-  const socialBtnBg = isDarkMode ? "bg-gray-700 hover:bg-gray-600" : "bg-gray-600 hover:bg-gray-700";
 
   return (
     <div className={`${bgMain} min-h-screen p-5 flex items-center justify-center transition-all duration-300`}>
       <div className={`w-11/12 max-w-md mx-auto ${formBg} p-8 rounded-lg shadow-xl transform transition-all duration-300 hover:shadow-2xl`}>
-        {/* Logo placeholder */}
+        {/* Logo */}
         <div className="flex justify-center mb-8">
           <div className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center">
             <FaUser className="text-white text-3xl" />
@@ -88,7 +83,7 @@ const Login = () => {
                 value={username}
                 required
                 onChange={(e) => setUsername(e.target.value)}
-                className={`w-full p-3 pl-10 rounded-lg ${inputBg} text-white placeholder-gray-300 focus:outline-none ${btnFocusRing} transition-all duration-300`}
+                className={`w-full p-3 pl-10 rounded-lg ${inputBg} placeholder-gray-300 focus:outline-none ${btnFocusRing} transition-all duration-300`}
               />
             </div>
           </div>
@@ -107,19 +102,10 @@ const Login = () => {
                 value={password}
                 required
                 onChange={(e) => setPassword(e.target.value)}
-                className={`w-full p-3 pl-10 rounded-lg ${inputBg} text-white placeholder-gray-300 focus:outline-none ${btnFocusRing} transition-all duration-300`}
+                className={`w-full p-3 pl-10 rounded-lg ${inputBg} placeholder-gray-300 focus:outline-none ${btnFocusRing} transition-all duration-300`}
               />
             </div>
           </div>
-
-{/*
-              Remember me & Forgot password 
-          <div className="flex items-center justify-between text-sm">
-            <Link to="/forgot-password" className="text-red-400 hover:text-red-300 transition-colors duration-300">
-              ¿Olvidaste tu contraseña?
-            </Link>
-          </div>
-*/}
 
           {/* Botón de submit */}
           <button
