@@ -24,14 +24,8 @@ const NavBar = () => {
       }`}
     >
       <div className="container mx-auto flex items-center justify-between p-4">
-        {/* Logo */}
         <button onClick={() => navigate(ROUTES.HOME)} className="flex items-center">
-          <img
-            src={isDarkMode ? "/images/logo-dark.png" : "/images/logo-light.png"}
-            alt="apiAnimals"
-            className="h-12 w-auto"
-          />
-          <span className="ml-2 font-bold text-xl">apiAnimals</span>
+          <span className="ml-2 font-bold text-xl">ApiAnimals</span>
         </button>
 
         {/* Menú escritorio */}

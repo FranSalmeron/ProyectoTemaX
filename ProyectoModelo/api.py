@@ -255,5 +255,4 @@ if __name__ == "__main__":
         limit_concurrency=10,
         timeout_keep_alive=30,
         # Aumentar tamaño máximo de request
-        ws_max_size=524288000  # 500 MB si usas websockets
     )
