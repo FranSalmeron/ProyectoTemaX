@@ -28,7 +28,8 @@ pip install python-multipart
 pip install fastapi uvicorn pillow tensorflow
 ```
 
-### Entrenar modelo
+### Entrenar modelo 
+No es necesario entrenarlo porque esta guardado pero si  quieres intentar mejorarlo aqui esta el comando para entrenarlo
 ```
 cd ProyectoModelo
 python -m model.model   --data_dir data/raw-img   --output_dir checkpoints   --epochs 15   --batch_size 64
